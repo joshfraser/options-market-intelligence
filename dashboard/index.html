@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Derivatives Market Intelligence</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>Crypto Derivatives Market Intelligence</h1>
+            <p class="subtitle">Perps · Options · Prediction Markets</p>
+            <p class="last-updated" id="lastUpdated"></p>
+        </div>
+    </header>
+
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="perps">Perpetuals</button>
+        <button class="tab-btn" data-tab="options">Options</button>
+        <button class="tab-btn" data-tab="predictions">Prediction Markets</button>
+    </nav>
+
+    <main>
+        <!-- Overview Tab -->
+        <section id="tab-overview" class="tab-content active">
+            <div class="metric-cards" id="overviewCards"></div>
+            <div class="chart-grid">
+                <div class="chart-card full-width">
+                    <h3>Perps — Daily Volume</h3>
+                    <div class="chart-container"><canvas id="overviewPerpsVolume"></canvas></div>
+                </div>
+                <div class="chart-card full-width">
+                    <h3>Options — Daily Volume</h3>
+                    <div class="chart-container"><canvas id="overviewOptionsVolume"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Perps — Market Share (24h Volume)</h3>
+                    <div class="chart-container doughnut-container"><canvas id="overviewPerpsShare"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Options — Market Share (24h Volume)</h3>
+                    <div class="chart-container doughnut-container"><canvas id="overviewOptionsShare"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Perps Tab -->
+        <section id="tab-perps" class="tab-content">
+            <div class="metric-cards" id="perpsCards"></div>
+            <div class="chart-grid">
+                <div class="chart-card full-width">
+                    <h3>Daily Trading Volume</h3>
+                    <div class="time-filter" data-chart="perpsVolume">
+                        <button class="tf-btn" data-range="30">30D</button>
+                        <button class="tf-btn" data-range="90">90D</button>
+                        <button class="tf-btn active" data-range="365">1Y</button>
+                        <button class="tf-btn" data-range="0">All</button>
+                    </div>
+                    <div class="chart-container"><canvas id="perpsVolume"></canvas></div>
+                </div>
+                <div class="chart-card full-width">
+                    <h3>Daily Fees</h3>
+                    <div class="time-filter" data-chart="perpsFees">
+                        <button class="tf-btn" data-range="30">30D</button>
+                        <button class="tf-btn" data-range="90">90D</button>
+                        <button class="tf-btn active" data-range="365">1Y</button>
+                        <button class="tf-btn" data-range="0">All</button>
+                    </div>
+                    <div class="chart-container"><canvas id="perpsFees"></canvas></div>
+                </div>
+                <div class="chart-card full-width">
+                    <h3>Daily Revenue</h3>
+                    <div class="time-filter" data-chart="perpsRevenue">
+                        <button class="tf-btn" data-range="30">30D</button>
+                        <button class="tf-btn" data-range="90">90D</button>
+                        <button class="tf-btn active" data-range="365">1Y</button>
+                        <button class="tf-btn" data-range="0">All</button>
+                    </div>
+                    <div class="chart-container"><canvas id="perpsRevenue"></canvas></div>
+                </div>
+                <div class="chart-card full-width">
+                    <h3>Total Value Locked (TVL)</h3>
+                    <div class="time-filter" data-chart="perpsTvl">
+                        <button class="tf-btn" data-range="30">30D</button>
+                        <button class="tf-btn" data-range="90">90D</button>
+                        <button class="tf-btn active" data-range="365">1Y</button>
+                        <button class="tf-btn" data-range="0">All</button>
+                    </div>
+                    <div class="chart-container"><canvas id="perpsTvl"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Market Share — 24h Volume</h3>
+                    <div class="chart-container doughnut-container"><canvas id="perpsShareChart"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Protocol Metrics</h3>
+                    <div class="table-container" id="perpsTable"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Options Tab -->
+        <section id="tab-options" class="tab-content">
+            <div class="metric-cards" id="optionsCards"></div>
+            <div class="chart-grid">
+                <div class="chart-card full-width">
+                    <h3>Daily Trading Volume</h3>
+                    <div class="time-filter" data-chart="optionsVolume">
+                        <button class="tf-btn" data-range="30">30D</button>
+                        <button class="tf-btn" data-range="90">90D</button>
+                        <button class="tf-btn active" data-range="365">1Y</button>
+                        <button class="tf-btn" data-range="0">All</button>
+                    </div>
+                    <div class="chart-container"><canvas id="optionsVolume"></canvas></div>
+                </div>
+                <div class="chart-card full-width">
+                    <h3>Daily Fees</h3>
+                    <div class="time-filter" data-chart="optionsFees">
+                        <button class="tf-btn" data-range="30">30D</button>
+                        <button class="tf-btn" data-range="90">90D</button>
+                        <button class="tf-btn active" data-range="365">1Y</button>
+                        <button class="tf-btn" data-range="0">All</button>
+                    </div>
+                    <div class="chart-container"><canvas id="optionsFees"></canvas></div>
+                </div>
+                <div class="chart-card full-width">
+                    <h3>Daily Revenue</h3>
+                    <div class="time-filter" data-chart="optionsRevenue">
+                        <button class="tf-btn" data-range="30">30D</button>
+                        <button class="tf-btn" data-range="90">90D</button>
+                        <button class="tf-btn active" data-range="365">1Y</button>
+                        <button class="tf-btn" data-range="0">All</button>
+                    </div>
+                    <div class="chart-container"><canvas id="optionsRevenue"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Market Share — 24h Volume</h3>
+                    <div class="chart-container doughnut-container"><canvas id="optionsShareChart"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Protocol Metrics</h3>
+                    <div class="table-container" id="optionsTable"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Prediction Markets Tab -->
+        <section id="tab-predictions" class="tab-content">
+            <div class="metric-cards" id="predictionsCards"></div>
+            <div class="chart-grid">
+                <div class="chart-card half-width">
+                    <h3>Market Share — Total Volume</h3>
+                    <div class="chart-container doughnut-container"><canvas id="predShareChart"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Price Prediction % of Volume</h3>
+                    <div class="chart-container doughnut-container"><canvas id="predPricePct"></canvas></div>
+                </div>
+                <div class="chart-card full-width">
+                    <h3>Prediction Market Volume History</h3>
+                    <div class="chart-container"><canvas id="predHistory"></canvas></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Polymarket — Top Crypto Markets</h3>
+                    <div class="table-container" id="polymarketTable"></div>
+                </div>
+                <div class="chart-card half-width">
+                    <h3>Kalshi — Top Crypto Markets</h3>
+                    <div class="table-container" id="kalshiTable"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Data sources: DefiLlama, Polymarket, Kalshi, Deribit, Hyperliquid</p>
+        <p>Run <code>python update_data.py</code> to refresh data</p>
+    </footer>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
