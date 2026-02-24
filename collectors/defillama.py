@@ -10,8 +10,10 @@ Free endpoints used:
 - /protocol/{protocol} - TVL history
 """
 
-from collectors import api_get, ts_to_date
+from collectors import api_get, api_get_with_fallback, ts_to_date
 
+# All free-tier endpoints use api.llama.fi
+# Pro API alternative: https://pro-api.llama.fi/{API_KEY}/...
 BASE_URL = "https://api.llama.fi"
 
 # Known perps protocols and their DefiLlama slugs
@@ -122,9 +124,13 @@ def fetch_options_protocol(slug):
 
 
 def fetch_perps_protocol_volume(slug):
-    """Fetch historical volume data for a specific perps protocol via dexs endpoint."""
+    """Fetch historical volume data for a specific perps protocol via derivatives endpoint."""
     print(f"  Fetching volume for {slug}...")
-    data = api_get(f"{BASE_URL}/summary/dexs/{slug}")
+    # Try derivatives first (correct for perps), then dexs as fallback
+    data = api_get_with_fallback(
+        f"{BASE_URL}/summary/derivatives/{slug}",
+        f"{BASE_URL}/summary/dexs/{slug}",
+    )
     if not data:
         return None
     return {
