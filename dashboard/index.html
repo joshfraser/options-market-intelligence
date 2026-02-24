@@ -24,10 +24,15 @@
         <button class="tab-btn" data-tab="predictions">Prediction Markets</button>
     </nav>
 
+    <div class="stale-banner" id="staleBanner" style="display:none;">
+        Data is more than 24 hours old. Run <code>python update_data.py</code> to refresh.
+    </div>
+
     <main>
         <!-- Overview Tab -->
         <section id="tab-overview" class="tab-content active">
             <div class="metric-cards" id="overviewCards"></div>
+            <div class="insights-panel" id="insightsPanel"></div>
             <div class="chart-grid">
                 <div class="chart-card full-width">
                     <h3>Perps — Daily Volume</h3>
@@ -151,6 +156,7 @@
         <!-- Prediction Markets Tab -->
         <section id="tab-predictions" class="tab-content">
             <div class="metric-cards" id="predictionsCards"></div>
+            <div id="predictionBars" class="prediction-bars"></div>
             <div class="chart-grid">
                 <div class="chart-card half-width">
                     <h3>Market Share — Total Volume</h3>

@@ -97,6 +97,24 @@ header h1 {
     border-bottom-color: var(--accent-blue);
 }
 
+/* === Stale Data Banner === */
+.stale-banner {
+    background: #78350f;
+    color: #fbbf24;
+    text-align: center;
+    padding: 0.6rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border-bottom: 1px solid #92400e;
+}
+
+.stale-banner code {
+    background: #92400e;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
 /* === Main === */
 main {
     max-width: 1440px;
@@ -148,6 +166,49 @@ main {
 
 .change.positive { color: var(--accent-green); }
 .change.negative { color: var(--accent-red); }
+
+/* === Insights Panel === */
+.insights-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.insights-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent-blue);
+    margin-bottom: 0.75rem;
+}
+
+.insights-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 0.5rem;
+}
+
+.insight-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    padding: 0.4rem 0;
+}
+
+.insight-item strong {
+    color: var(--text-primary);
+}
+
+.insight-icon {
+    color: var(--accent-blue);
+    font-size: 0.7rem;
+    flex-shrink: 0;
+}
 
 /* === Chart Grid === */
 .chart-grid {
@@ -221,6 +282,97 @@ main {
     background: var(--accent-blue);
     border-color: var(--accent-blue);
     color: #fff;
+}
+
+/* === Prediction Breakdown Bars === */
+.prediction-bars {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.pred-bar-row {
+    display: grid;
+    grid-template-columns: 220px 1fr 50px;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+}
+
+.pred-bar-row + .pred-bar-row {
+    border-top: 1px solid var(--border);
+}
+
+.pred-bar-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.pred-bar-platform {
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.pred-bar-vals {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.pred-bar-track {
+    height: 20px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.pred-bar-fill {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.6s ease;
+    min-width: 2px;
+}
+
+.pred-bar-pct {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+/* === Export Buttons === */
+.export-btn {
+    position: absolute;
+    top: 1.25rem;
+    right: 1.25rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    z-index: 3;
+}
+
+.export-btn:hover {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: #fff;
+}
+
+/* Move export btn when time filter exists */
+.chart-card:has(.time-filter) .export-btn {
+    right: auto;
+    left: auto;
+    top: 0.6rem;
+    right: auto;
+    left: 1.25rem;
 }
 
 /* === Tables === */

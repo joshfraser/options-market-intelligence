@@ -88,6 +88,40 @@ Chart.defaults.plugins.tooltip.padding = 12;
 const chartInstances = {};
 const chartDataStore = {};
 
+// ── CSV Export ──────────────────────────────────────────────────────
+function exportTimeseriesCSV(chartId, filename) {
+    const store = chartDataStore[chartId];
+    if (!store) return;
+    const { dates, series } = store;
+    const names = Object.keys(series);
+    const header = ["Date", ...names].join(",");
+    const rows = dates.map((d, i) =>
+        [d, ...names.map(n => series[n][i] ?? "")].join(",")
+    );
+    downloadCSV([header, ...rows].join("\n"), filename);
+}
+
+function exportTableCSV(tableId, filename) {
+    const table = document.querySelector(`#${tableId} table`);
+    if (!table) return;
+    const rows = [];
+    table.querySelectorAll("tr").forEach(tr => {
+        const cells = [];
+        tr.querySelectorAll("th, td").forEach(td => cells.push('"' + td.textContent.trim().replace(/"/g, '""') + '"'));
+        rows.push(cells.join(","));
+    });
+    downloadCSV(rows.join("\n"), filename);
+}
+
+function downloadCSV(csv, filename) {
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
 // ── Tab navigation ─────────────────────────────────────────────────
 document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -202,7 +236,13 @@ function buildStackedArea(canvasId, timeseries, title, defaultRange) {
                 tooltip: {
                     callbacks: {
                         label: ctx => ctx.dataset.label + ": " + fmtUSD(ctx.parsed.y),
+                        footer: items => {
+                            const total = items.reduce((sum, item) => sum + (item.parsed.y || 0), 0);
+                            return "Total: " + fmtUSD(total);
+                        },
                     },
+                    footerFont: { weight: "bold" },
+                    footerColor: "#e4e6f0",
                 },
                 legend: {
                     position: "bottom",
@@ -421,6 +461,42 @@ function renderPredictionTable(containerId, markets, isKalshi) {
     `;
 }
 
+// ── Prediction breakdown bars ──────────────────────────────────────
+function renderPredictionBars(containerId, poly, kalshi) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const polyTotal = poly.totalVolume || 0;
+    const polyCrypto = poly.cryptoVolume || 0;
+    const polyPct = polyTotal > 0 ? (polyCrypto / polyTotal * 100) : 0;
+    const kalshiTotal = kalshi.totalContracts || 0;
+    const kalshiCrypto = kalshi.cryptoContracts || 0;
+    const kalshiPct = kalshiTotal > 0 ? (kalshiCrypto / kalshiTotal * 100) : 0;
+
+    container.innerHTML = `
+        <div class="pred-bar-row">
+            <div class="pred-bar-label">
+                <span class="pred-bar-platform" style="color:#2C5BF4">Polymarket</span>
+                <span class="pred-bar-vals">${fmtUSD(polyCrypto)} crypto / ${fmtUSD(polyTotal)} total</span>
+            </div>
+            <div class="pred-bar-track">
+                <div class="pred-bar-fill" style="width:${polyPct}%;background:#2C5BF4"></div>
+            </div>
+            <span class="pred-bar-pct">${polyPct.toFixed(1)}%</span>
+        </div>
+        <div class="pred-bar-row">
+            <div class="pred-bar-label">
+                <span class="pred-bar-platform" style="color:#FF6B35">Kalshi</span>
+                <span class="pred-bar-vals">${fmtNum(kalshiCrypto)} crypto / ${fmtNum(kalshiTotal)} total contracts</span>
+            </div>
+            <div class="pred-bar-track">
+                <div class="pred-bar-fill" style="width:${kalshiPct}%;background:#FF6B35"></div>
+            </div>
+            <span class="pred-bar-pct">${kalshiPct.toFixed(1)}%</span>
+        </div>
+    `;
+}
+
 // ── Prediction history chart ───────────────────────────────────────
 function buildPredictionHistory(canvasId, history) {
     const ctx = document.getElementById(canvasId);
@@ -525,11 +601,16 @@ function render() {
 
     const D = DASHBOARD_DATA;
 
-    // Last updated
+    // Last updated + stale warning
     if (D.lastUpdated) {
         const dt = new Date(D.lastUpdated);
         document.getElementById("lastUpdated").textContent =
             "Last updated: " + dt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+        const hoursOld = (Date.now() - dt.getTime()) / (1000 * 60 * 60);
+        if (hoursOld > 24) {
+            const banner = document.getElementById("staleBanner");
+            if (banner) banner.style.display = "block";
+        }
     }
 
     // ── Overview tab ───────────────────────────────────────────────
@@ -543,6 +624,8 @@ function render() {
         { label: "Perps TVL", value: fmtUSD(perpsM.tvl) },
         { label: "Polymarket Volume", value: fmtUSD(D.predictions?.polymarket?.totalVolume) },
     ]);
+
+    renderInsights("insightsPanel", D);
 
     buildStackedArea("overviewPerpsVolume", D.perps?.volumeTimeseries, "Perps Volume", 365);
     buildStackedArea("overviewOptionsVolume", D.options?.volumeTimeseries, "Options Volume", 365);
@@ -590,6 +673,9 @@ function render() {
         { label: "Kalshi Price Pred %", value: (kalshi.pricePredictionPct || 0).toFixed(1) + "%" },
     ]);
 
+    // Volume breakdown bars
+    renderPredictionBars("predictionBars", poly, kalshi);
+
     buildDoughnut("predShareChart", D.predictionMarketShare);
 
     // Price prediction percentage chart
@@ -607,5 +693,141 @@ function render() {
     renderPredictionTable("kalshiTable", kalshi.topCryptoMarkets, true);
 }
 
+// ── Key Insights Generator ──────────────────────────────────────────
+function generateInsights(D) {
+    const insights = [];
+    const perps = D.perps || {};
+    const options = D.options || {};
+    const pred = D.predictions || {};
+
+    // Top perps protocol by market share
+    if (perps.marketShare) {
+        const top = Object.entries(perps.marketShare).sort((a, b) => b[1] - a[1])[0];
+        if (top) insights.push({ icon: "chart", text: `<strong>${top[0]}</strong> leads perps with ${top[1].toFixed(1)}% market share by 24h volume` });
+    }
+
+    // Top options protocol
+    if (options.marketShare) {
+        const top = Object.entries(options.marketShare).sort((a, b) => b[1] - a[1])[0];
+        if (top) insights.push({ icon: "chart", text: `<strong>${top[0]}</strong> dominates options with ${top[1].toFixed(1)}% market share` });
+    }
+
+    // Perps vs options volume ratio
+    const perpsVol = perps.metrics?.volume24h;
+    const optionsVol = options.metrics?.volume24h;
+    if (perpsVol && optionsVol && optionsVol > 0) {
+        const ratio = perpsVol / optionsVol;
+        insights.push({ icon: "scale", text: `Perps volume is <strong>${ratio.toFixed(0)}x</strong> options volume (${fmtUSD(perpsVol)} vs ${fmtUSD(optionsVol)})` });
+    }
+
+    // Prediction market crypto percentage
+    const polyPct = pred.polymarket?.pricePredictionPct;
+    const kalshiPct = pred.kalshi?.pricePredictionPct;
+    if (polyPct != null) {
+        insights.push({ icon: "trend", text: `Crypto price predictions are <strong>${polyPct.toFixed(1)}%</strong> of Polymarket volume` });
+    }
+    if (kalshiPct != null) {
+        insights.push({ icon: "trend", text: `Crypto price predictions are <strong>${kalshiPct.toFixed(1)}%</strong> of Kalshi volume` });
+    }
+
+    // Fee/volume ratio (take rate) for perps
+    const perpsFees = perps.metrics?.fees24h;
+    if (perpsFees && perpsVol && perpsVol > 0) {
+        const takeRate = (perpsFees / perpsVol) * 100;
+        insights.push({ icon: "fee", text: `Perps average take rate: <strong>${takeRate.toFixed(3)}%</strong> (${fmtUSD(perpsFees)} fees on ${fmtUSD(perpsVol)} volume)` });
+    }
+
+    // Volume trend (30d vs prior 30d from timeseries)
+    if (perps.volumeTimeseries?.dates?.length > 60) {
+        const ts = perps.volumeTimeseries;
+        const len = ts.dates.length;
+        const sumRange = (start, end) => {
+            let total = 0;
+            for (const vals of Object.values(ts.series)) {
+                for (let i = start; i < end; i++) total += (vals[i] || 0);
+            }
+            return total;
+        };
+        const recent = sumRange(len - 30, len);
+        const prior = sumRange(len - 60, len - 30);
+        if (prior > 0) {
+            const growth = ((recent - prior) / prior) * 100;
+            const dir = growth >= 0 ? "up" : "down";
+            insights.push({ icon: dir === "up" ? "up" : "down", text: `Perps 30d volume <strong>${dir} ${Math.abs(growth).toFixed(1)}%</strong> vs prior 30 days` });
+        }
+    }
+
+    return insights;
+}
+
+function renderInsights(containerId, D) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const insights = generateInsights(D);
+    if (insights.length === 0) return;
+
+    const iconMap = { chart: "&#x25C9;", scale: "&#x2696;", trend: "&#x2197;", fee: "&#x25B3;", up: "&#x25B2;", down: "&#x25BC;" };
+    container.innerHTML = `
+        <h3 class="insights-title">Key Insights</h3>
+        <div class="insights-grid">
+            ${insights.map(i => `
+                <div class="insight-item">
+                    <span class="insight-icon">${iconMap[i.icon] || "&#x25CF;"}</span>
+                    <span>${i.text}</span>
+                </div>
+            `).join("")}
+        </div>
+    `;
+}
+
+// ── Export buttons ──────────────────────────────────────────────────
+function addExportButtons() {
+    const chartExports = [
+        { chart: "perpsVolume", label: "Perps Volume", file: "perps_volume.csv" },
+        { chart: "perpsFees", label: "Perps Fees", file: "perps_fees.csv" },
+        { chart: "perpsRevenue", label: "Perps Revenue", file: "perps_revenue.csv" },
+        { chart: "perpsTvl", label: "Perps TVL", file: "perps_tvl.csv" },
+        { chart: "optionsVolume", label: "Options Volume", file: "options_volume.csv" },
+        { chart: "optionsFees", label: "Options Fees", file: "options_fees.csv" },
+        { chart: "optionsRevenue", label: "Options Revenue", file: "options_revenue.csv" },
+    ];
+
+    chartExports.forEach(({ chart, file }) => {
+        const canvas = document.getElementById(chart);
+        if (!canvas) return;
+        const card = canvas.closest(".chart-card");
+        if (!card) return;
+        const btn = document.createElement("button");
+        btn.className = "export-btn";
+        btn.textContent = "CSV";
+        btn.title = "Export data as CSV";
+        btn.addEventListener("click", () => exportTimeseriesCSV(chart, file));
+        card.appendChild(btn);
+    });
+
+    const tableExports = [
+        { table: "perpsTable", file: "perps_protocols.csv" },
+        { table: "optionsTable", file: "options_protocols.csv" },
+        { table: "polymarketTable", file: "polymarket_crypto.csv" },
+        { table: "kalshiTable", file: "kalshi_crypto.csv" },
+    ];
+
+    tableExports.forEach(({ table, file }) => {
+        const container = document.getElementById(table);
+        if (!container) return;
+        const card = container.closest(".chart-card");
+        if (!card) return;
+        const btn = document.createElement("button");
+        btn.className = "export-btn";
+        btn.textContent = "CSV";
+        btn.title = "Export table as CSV";
+        btn.addEventListener("click", () => exportTableCSV(table, file));
+        card.appendChild(btn);
+    });
+}
+
 // ── Initialize ─────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", render);
+document.addEventListener("DOMContentLoaded", () => {
+    render();
+    addExportButtons();
+});
