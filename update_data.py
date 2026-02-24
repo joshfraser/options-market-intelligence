@@ -5,7 +5,15 @@ Daily data updater for the crypto derivatives market intelligence dashboard.
 Usage:
     python update_data.py
 
-Run once daily to fetch fresh data from all sources and regenerate the dashboard.
+Data sources:
+- Hyperliquid direct API (perps — free, no key)
+- dYdX v4 Indexer API (perps — free, no key)
+- Deribit public API (options — free, no key)
+- CoinGecko free tier (other perps protocols — free, no key)
+- DefiLlama (TVL only — free, no key)
+- Polymarket / Kalshi (prediction markets — free)
+
+Historical timeseries are accumulated daily in data/history.json.
 """
 
 import json
@@ -14,7 +22,11 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from collectors.defillama import fetch_all_perps_data, fetch_all_options_data
+from collectors.hyperliquid import fetch_hyperliquid_data
+from collectors.dydx import fetch_dydx_data
+from collectors.deribit_api import fetch_deribit_options_data
+from collectors.coingecko import fetch_derivatives_exchanges
+from collectors.defillama import fetch_all_tvl
 from collectors.polymarket import fetch_all_polymarket_data
 from collectors.kalshi import fetch_all_kalshi_data
 
@@ -22,13 +34,48 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 DASHBOARD_DIR = os.path.join(os.path.dirname(__file__), "dashboard")
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 
+# Protocols tracked for perps (slug -> display name)
+PERPS_PROTOCOLS = {
+    "hyperliquid": "Hyperliquid",
+    "lighter-v2": "Lighter",
+    "dydx": "dYdX",
+    "gmx-v2": "GMX",
+    "vertex-protocol": "Vertex",
+    "jupiter-perpetual": "Jupiter Perps",
+    "drift-protocol": "Drift",
+    "kwenta": "Kwenta",
+    "apex-protocol": "ApeX",
+    "gains-network": "Gains Network",
+    "synthetix": "Synthetix",
+    "aevo": "Aevo",
+    "bluefin": "Bluefin",
+    "rabbitx": "RabbitX",
+}
+
+# Protocols tracked for options
+OPTIONS_PROTOCOLS = {
+    "deribit": "Deribit",
+    "lyra": "Lyra",
+    "hegic": "Hegic",
+    "premia": "Premia",
+    "aevo": "Aevo",
+    "thetanuts-finance": "Thetanuts",
+    "opyn": "Opyn",
+    "derive": "Derive",
+    "moby": "Moby",
+    "ithaca-protocol": "Ithaca",
+    "stryke": "Stryke",
+    "typus-finance": "Typus",
+    "zeta-markets": "Zeta Markets",
+}
+
 
 def load_history():
     """Load existing historical snapshots."""
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r") as f:
             return json.load(f)
-    return {"snapshots": [], "predictionHistory": []}
+    return {"snapshots": [], "predictionHistory": [], "perpsDaily": {}, "optionsDaily": {}}
 
 
 def save_history(history):
@@ -38,13 +85,247 @@ def save_history(history):
         json.dump(history, f, indent=2)
 
 
+def load_previous_data(filename):
+    """Load previously saved raw data to preserve historical timeseries."""
+    path = os.path.join(DATA_DIR, filename)
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    return None
+
+
+# ── Data fetching ──────────────────────────────────────────────────────
+
+
+def fetch_all_perps_data():
+    """
+    Fetch perps data from multiple free sources:
+    1. Hyperliquid direct API (most volume)
+    2. dYdX v4 Indexer (second largest)
+    3. CoinGecko free tier (remaining protocols)
+    4. DefiLlama (TVL only)
+
+    Merges with previously saved historical timeseries.
+    """
+    print("\n=== Fetching Perps Data ===")
+    results = {}
+
+    # Initialize all protocols with defaults
+    for slug, name in PERPS_PROTOCOLS.items():
+        results[slug] = {
+            "displayName": name,
+            "slug": slug,
+            "volume24h": 0,
+            "volume7d": 0,
+            "volume30d": 0,
+            "fees24h": 0,
+            "revenue24h": 0,
+            "currentTvl": 0,
+            "volumeHistory": {},
+            "feesHistory": {},
+            "revenueHistory": {},
+            "tvlHistory": {},
+        }
+
+    # 1. Hyperliquid direct API
+    print("\n--- Hyperliquid (direct API) ---")
+    hl_data = fetch_hyperliquid_data()
+    if hl_data:
+        results["hyperliquid"].update({
+            "volume24h": hl_data.get("volume24h", 0),
+            "fees24h": hl_data.get("fees24h", 0),
+            "revenue24h": hl_data.get("revenue24h", 0),
+            "openInterest": hl_data.get("openInterest", 0),
+            "source": "hyperliquid_api",
+        })
+        print(f"  Hyperliquid: ${hl_data.get('volume24h', 0):,.0f} 24h volume")
+    else:
+        print("  Hyperliquid direct API failed, will try CoinGecko fallback")
+
+    # 2. dYdX direct API
+    print("\n--- dYdX v4 (direct API) ---")
+    dydx_data = fetch_dydx_data()
+    if dydx_data:
+        results["dydx"].update({
+            "volume24h": dydx_data.get("volume24h", 0),
+            "fees24h": dydx_data.get("fees24h", 0),
+            "revenue24h": dydx_data.get("revenue24h", 0),
+            "openInterest": dydx_data.get("openInterest", 0),
+            "source": "dydx_indexer",
+        })
+        print(f"  dYdX: ${dydx_data.get('volume24h', 0):,.0f} 24h volume")
+    else:
+        print("  dYdX direct API failed, will try CoinGecko fallback")
+
+    # 3. CoinGecko for remaining protocols
+    print("\n--- CoinGecko (free tier) ---")
+    cg_data = fetch_derivatives_exchanges()
+    if cg_data:
+        for slug, cg_proto in cg_data.items():
+            if slug not in results:
+                continue
+            # Only use CoinGecko if we don't already have direct API data
+            if results[slug].get("source"):
+                continue
+            results[slug].update({
+                "volume24h": cg_proto.get("volume24h", 0),
+                "fees24h": cg_proto.get("fees24h", 0),
+                "revenue24h": cg_proto.get("revenue24h", 0),
+                "openInterest": cg_proto.get("openInterest", 0),
+                "source": "coingecko",
+            })
+            print(f"  {results[slug]['displayName']}: ${cg_proto.get('volume24h', 0):,.0f} 24h volume (CoinGecko)")
+    else:
+        print("  CoinGecko fetch failed")
+
+    # 4. TVL from DefiLlama (still free and reliable)
+    print("\n--- TVL (DefiLlama) ---")
+    tvl_data = fetch_all_tvl()
+    if tvl_data:
+        for slug, tvl_info in tvl_data.items():
+            if slug in results:
+                results[slug]["tvlHistory"] = tvl_info.get("tvlHistory", {})
+                results[slug]["currentTvl"] = tvl_info.get("currentTvl", 0)
+
+    # 5. Merge with previous historical timeseries
+    previous = load_previous_data("perps_latest.json")
+    if previous:
+        for slug, pdata in previous.items():
+            if slug in results:
+                # Preserve volume/fees/revenue history from previous runs
+                for field in ("volumeHistory", "feesHistory", "revenueHistory"):
+                    old_hist = pdata.get(field, {})
+                    if old_hist and not results[slug].get(field):
+                        results[slug][field] = old_hist
+
+    return results
+
+
+def fetch_all_options_data():
+    """
+    Fetch options data:
+    1. Deribit direct API (~90% of crypto options volume)
+    2. Previously saved data for smaller protocols
+
+    Returns same structure as before: { overview: {}, protocols: {} }
+    """
+    print("\n=== Fetching Options Data ===")
+    results = {}
+
+    # Initialize all protocols
+    for slug, name in OPTIONS_PROTOCOLS.items():
+        results[slug] = {
+            "displayName": name,
+            "slug": slug,
+            "volume24h": 0,
+            "notionalVolume24h": 0,
+            "premiumVolume24h": 0,
+            "fees24h": 0,
+            "revenue24h": 0,
+            "volumeAllTime": 0,
+            "volumeHistory": {},
+            "feesHistory": {},
+            "revenueHistory": {},
+        }
+
+    # 1. Deribit direct API
+    print("\n--- Deribit (direct API) ---")
+    deribit_data = fetch_deribit_options_data()
+    if deribit_data:
+        results["deribit"].update({
+            "volume24h": deribit_data.get("volume24h", 0),
+            "notionalVolume24h": deribit_data.get("notionalVolume24h", 0),
+            "premiumVolume24h": deribit_data.get("premiumVolume24h", 0),
+            "fees24h": deribit_data.get("fees24h", 0),
+            "revenue24h": deribit_data.get("revenue24h", 0),
+            "openInterest": deribit_data.get("openInterest", 0),
+            "source": "deribit_api",
+        })
+        print(f"  Deribit: ${deribit_data.get('volume24h', 0):,.0f} 24h options volume")
+    else:
+        print("  Deribit direct API failed")
+
+    # 2. Merge with previous data for history + smaller protocols
+    previous = load_previous_data("options_latest.json")
+    if previous:
+        prev_protocols = previous.get("protocols", previous)
+        for slug, pdata in prev_protocols.items():
+            if slug in results:
+                # Preserve historical timeseries
+                for field in ("volumeHistory", "feesHistory", "revenueHistory"):
+                    old_hist = pdata.get(field, {})
+                    if old_hist and not results[slug].get(field):
+                        results[slug][field] = old_hist
+                # For non-Deribit protocols, keep last known values if no new data
+                if slug != "deribit" and results[slug]["volume24h"] == 0:
+                    for field in ("volume24h", "notionalVolume24h", "premiumVolume24h",
+                                  "fees24h", "revenue24h", "volumeAllTime"):
+                        if pdata.get(field):
+                            results[slug][field] = pdata[field]
+
+    # Build overview total history from preserved data
+    overview_history = {}
+    if previous and previous.get("overview", {}).get("totalHistory"):
+        overview_history = previous["overview"]["totalHistory"]
+
+    return {
+        "overview": {"totalHistory": overview_history},
+        "protocols": results,
+    }
+
+
+# ── Timeseries accumulation ───────────────────────────────────────────
+
+
+def accumulate_daily_snapshot(history, perps_data, options_data):
+    """
+    Save today's volume/fees snapshot into history for building timeseries.
+    This replaces DefiLlama's historical data with our own accumulation.
+    """
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Perps daily snapshots: { slug: { date: volume } }
+    perps_daily = history.get("perpsDaily", {})
+    for slug, pdata in (perps_data or {}).items():
+        vol = pdata.get("volume24h", 0) or 0
+        if vol > 0:
+            if slug not in perps_daily:
+                perps_daily[slug] = {}
+            perps_daily[slug][today] = vol
+    history["perpsDaily"] = perps_daily
+
+    # Options daily snapshots
+    options_daily = history.get("optionsDaily", {})
+    options_protocols = options_data.get("protocols", {}) if options_data else {}
+    for slug, pdata in options_protocols.items():
+        vol = pdata.get("volume24h", 0) or 0
+        if vol > 0:
+            if slug not in options_daily:
+                options_daily[slug] = {}
+            options_daily[slug][today] = vol
+    history["optionsDaily"] = options_daily
+
+    return history
+
+
+def merge_timeseries(protocol_data, daily_history, slug):
+    """
+    Merge a protocol's existing volumeHistory with accumulated daily snapshots.
+    The daily history (from our own accumulation) supplements the old DefiLlama data.
+    """
+    existing = dict(protocol_data.get("volumeHistory", {}))
+    accumulated = daily_history.get(slug, {})
+
+    # Accumulated data takes priority for dates where we have it
+    existing.update(accumulated)
+    protocol_data["volumeHistory"] = existing
+
+
+# ── Dashboard data building (unchanged logic) ─────────────────────────
+
+
 def _aggregate_volume_timeseries(protocols_data, top_n=6):
-    """
-    Build a unified timeseries from per-protocol volume history dicts.
-    Returns { dates: [...], series: { "Proto": [...], ... } }
-    Groups smaller protocols into "Others".
-    """
-    # Collect all dates
+    """Build a unified timeseries from per-protocol volume history dicts."""
     all_dates = set()
     proto_volumes = {}
     for slug, pdata in protocols_data.items():
@@ -57,8 +338,6 @@ def _aggregate_volume_timeseries(protocols_data, top_n=6):
         return {"dates": [], "series": {}}
 
     dates = sorted(all_dates)
-
-    # Rank protocols by total volume
     ranked = sorted(
         proto_volumes.items(),
         key=lambda x: sum(x[1].values()),
@@ -73,10 +352,10 @@ def _aggregate_volume_timeseries(protocols_data, top_n=6):
         series[name] = [proto_volumes[name].get(d, 0) for d in dates]
 
     if others:
-        others_series = []
-        for d in dates:
-            others_series.append(sum(proto_volumes[name].get(d, 0) for name in others))
-        series["Others"] = others_series
+        series["Others"] = [
+            sum(proto_volumes[name].get(d, 0) for name in others)
+            for d in dates
+        ]
 
     return {"dates": dates, "series": series}
 
@@ -244,7 +523,7 @@ def build_dashboard_data(perps_data, options_data, polymarket_data, kalshi_data)
         },
     }
 
-    # Build prediction market share (by total volume - approximate)
+    # Build prediction market share
     pred_share = {}
     poly_vol = poly.get("totalVolume", {}).get("total", 0)
     kalshi_vol = kalshi_d.get("totalStats", {}).get("totalContracts", 0)
@@ -339,7 +618,6 @@ def save_prediction_snapshot(history, polymarket_data, kalshi_data):
 
 def generate_dashboard_js(dashboard_data, prediction_history):
     """Write the dashboard data as a JavaScript file for the frontend."""
-    # Include prediction history in the data
     dashboard_data["predictionHistory"] = prediction_history
 
     js_content = (
@@ -360,6 +638,7 @@ def main():
     print(f"{'='*60}")
     print(f"Crypto Derivatives Market Intelligence - Data Update")
     print(f"Started: {datetime.now(timezone.utc).isoformat()}")
+    print(f"Sources: Hyperliquid, dYdX, Deribit, CoinGecko, DefiLlama (TVL)")
     print(f"{'='*60}")
 
     # Load existing history
@@ -370,6 +649,15 @@ def main():
     options_data = fetch_all_options_data()
     polymarket_data = fetch_all_polymarket_data()
     kalshi_data = fetch_all_kalshi_data()
+
+    # Accumulate daily volume snapshots into history
+    history = accumulate_daily_snapshot(history, perps_data, options_data)
+
+    # Merge accumulated history back into protocol data for timeseries
+    for slug in perps_data:
+        merge_timeseries(perps_data[slug], history.get("perpsDaily", {}), slug)
+    for slug in options_data.get("protocols", {}):
+        merge_timeseries(options_data["protocols"][slug], history.get("optionsDaily", {}), slug)
 
     # Save raw data snapshots
     os.makedirs(DATA_DIR, exist_ok=True)
