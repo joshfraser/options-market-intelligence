@@ -12,12 +12,9 @@ Free endpoints used:
 
 from collectors import api_get, api_get_with_fallback, ts_to_date
 
-# TVL endpoints use api.llama.fi directly
-TVL_BASE = "https://api.llama.fi"
-
-# Dimensions endpoints (volumes, fees, options) use /api/ prefix
-# See https://api-docs.defillama.com/ for current docs
-DIMENSIONS_BASE = "https://api.llama.fi/api"
+# All free-tier endpoints use api.llama.fi
+# Pro API alternative: https://pro-api.llama.fi/{API_KEY}/...
+BASE_URL = "https://api.llama.fi"
 
 # Known perps protocols and their DefiLlama slugs
 PERPS_PROTOCOLS = {
@@ -84,10 +81,7 @@ def _extract_breakdown_chart(data, key="totalDataChartBreakdown"):
 def fetch_options_overview():
     """Fetch options volume overview with historical data and per-protocol breakdown."""
     print("Fetching DefiLlama options overview...")
-    data = api_get_with_fallback(
-        f"{DIMENSIONS_BASE}/overview/options",
-        f"{TVL_BASE}/overview/options",
-    )
+    data = api_get(f"{BASE_URL}/overview/options")
     if not data:
         return None
 
@@ -118,10 +112,7 @@ def fetch_options_overview():
 def fetch_options_protocol(slug):
     """Fetch historical options data for a specific protocol."""
     print(f"  Fetching options data for {slug}...")
-    data = api_get_with_fallback(
-        f"{DIMENSIONS_BASE}/summary/options/{slug}",
-        f"{TVL_BASE}/summary/options/{slug}",
-    )
+    data = api_get(f"{BASE_URL}/summary/options/{slug}")
     if not data:
         return None
     return {
@@ -137,9 +128,8 @@ def fetch_perps_protocol_volume(slug):
     print(f"  Fetching volume for {slug}...")
     # Try derivatives first (correct for perps), then dexs as fallback
     data = api_get_with_fallback(
-        f"{DIMENSIONS_BASE}/summary/derivatives/{slug}",
-        f"{DIMENSIONS_BASE}/summary/dexs/{slug}",
-        f"{TVL_BASE}/summary/dexs/{slug}",
+        f"{BASE_URL}/summary/derivatives/{slug}",
+        f"{BASE_URL}/summary/dexs/{slug}",
     )
     if not data:
         return None
@@ -159,10 +149,7 @@ def fetch_perps_protocol_volume(slug):
 def fetch_protocol_fees(slug):
     """Fetch historical fees and revenue for a protocol."""
     print(f"  Fetching fees/revenue for {slug}...")
-    data = api_get_with_fallback(
-        f"{DIMENSIONS_BASE}/summary/fees/{slug}",
-        f"{TVL_BASE}/summary/fees/{slug}",
-    )
+    data = api_get(f"{BASE_URL}/summary/fees/{slug}")
     if not data:
         return None
 
@@ -206,10 +193,7 @@ def fetch_protocol_fees(slug):
 def fetch_fees_overview():
     """Fetch overview of all protocol fees/revenue."""
     print("Fetching DefiLlama fees overview...")
-    data = api_get_with_fallback(
-        f"{DIMENSIONS_BASE}/overview/fees",
-        f"{TVL_BASE}/overview/fees",
-    )
+    data = api_get(f"{BASE_URL}/overview/fees")
     if not data:
         return None
 
@@ -233,7 +217,7 @@ def fetch_fees_overview():
 def fetch_protocol_tvl(slug):
     """Fetch TVL history for a protocol."""
     print(f"  Fetching TVL for {slug}...")
-    data = api_get(f"{TVL_BASE}/protocol/{slug}")
+    data = api_get(f"{BASE_URL}/protocol/{slug}")
     if not data:
         return None
 
